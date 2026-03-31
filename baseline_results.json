@@ -1,0 +1,215 @@
+{
+  "agent": "Groq moonshotai/kimi-k2-instruct",
+  "tasks": {
+    "easy": {
+      "task": "easy",
+      "calls_handled": 4,
+      "raw_score": 1.55,
+      "normalized_score": 0.4844,
+      "per_call": [
+        {
+          "call_id": "E005",
+          "incident_type": "fire",
+          "severity": "minor",
+          "action": {
+            "ambulance_units": 0,
+            "police_units": 0,
+            "fire_units": 1,
+            "priority_level": 2,
+            "backup_requested": false,
+            "reasoning": "Small dumpster fire spreading to fence; one fire unit sufficient to extinguish before major spread"
+          },
+          "reward": 0.4,
+          "feedback": "\u2705 fire: 1 sent (min 1) (+0.10) | \u2705 priority 2 correct (+0.20) | \u2705 backup not needed (+0.10)"
+        },
+        {
+          "call_id": "E001",
+          "incident_type": "medical",
+          "severity": "severe",
+          "action": {
+            "ambulance_units": 3,
+            "police_units": 0,
+            "fire_units": 0,
+            "priority_level": 4,
+            "backup_requested": false,
+            "reasoning": "Unconscious unresponsive 78-year-old is a critical medical emergency; send 3 ambulance units for rapid assessment, treatment and transport. No police or fire involvement needed."
+          },
+          "reward": 0.275,
+          "feedback": "\u26a0\ufe0f ambulance: 3 sent but 1 needed (+0.075) | \u26a0\ufe0f priority 4 (expected 3) (+0.10) | \u2705 backup not needed (+0.10)"
+        },
+        {
+          "call_id": "E003",
+          "incident_type": "crime",
+          "severity": "moderate",
+          "action": {
+            "ambulance_units": 0,
+            "police_units": 2,
+            "fire_units": 0,
+            "priority_level": 2,
+            "backup_requested": false,
+            "reasoning": "Burglary in progress is a moderate crime requiring police response; no injuries or fire hazard present."
+          },
+          "reward": 0.3,
+          "feedback": "\u2705 police: 2 sent (min 2) (+0.10) | \u26a0\ufe0f priority 2 (expected 3) (+0.10) | \u2705 backup not needed (+0.10)"
+        },
+        {
+          "call_id": "E007",
+          "incident_type": "medical",
+          "severity": "critical",
+          "action": {
+            "ambulance_units": 2,
+            "police_units": 0,
+            "fire_units": 0,
+            "priority_level": 4,
+            "backup_requested": false,
+            "reasoning": "Critical choking child needs immediate advanced airway management; send all available ambulances for rapid transport and ALS care"
+          },
+          "reward": 0.575,
+          "feedback": "\u26a0\ufe0f ambulance: 2 sent but 1 needed (+0.075) | \u2705 priority 4 correct (+0.20) | \u2705 backup not needed (+0.10) | \ud83c\udfc1 Episode complete! Total score: 1.550"
+        }
+      ]
+    },
+    "medium": {
+      "task": "medium",
+      "calls_handled": 4,
+      "raw_score": 1.65,
+      "normalized_score": 0.5156,
+      "per_call": [
+        {
+          "call_id": "M006",
+          "incident_type": "medical",
+          "severity": "severe",
+          "action": {
+            "ambulance_units": 3,
+            "police_units": 0,
+            "fire_units": 2,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Carbon monoxide leak causing multiple casualties with severe symptoms; hazmat/fire needed for source control, multiple ambulances for affected persons"
+          },
+          "reward": 0.325,
+          "feedback": "\u26a0\ufe0f ambulance: 3 sent but 2 needed (+0.075) | \u2705 fire: 2 sent (min 2) (+0.10) | \u2705 priority 4 correct (+0.20) | \u26a0\ufe0f backup not needed but requested (-0.05)"
+        },
+        {
+          "call_id": "M003",
+          "incident_type": "fire",
+          "severity": "severe",
+          "action": {
+            "ambulance_units": 1,
+            "police_units": 0,
+            "fire_units": 2,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Potential hazmat incident with unknown chemical; fire units needed for containment and decon, ambulance on standby for exposures; critical due to unknown toxicity and evacuation"
+          },
+          "reward": 0.45,
+          "feedback": "\u2705 ambulance: 1 sent (min 1) (+0.10) | \u26a0\ufe0f fire: 2 sent but 3 needed (+0.05) | \u2705 priority 4 correct (+0.20) | \u2705 backup needed (+0.10)"
+        },
+        {
+          "call_id": "M001",
+          "incident_type": "accident",
+          "severity": "severe",
+          "action": {
+            "ambulance_units": 1,
+            "police_units": 2,
+            "fire_units": 0,
+            "priority_level": 4,
+            "backup_requested": false,
+            "reasoning": "Severe collision with trapped/injured driver and engine fire; send all available ambulances, police for traffic control and rescue support, no fire units available"
+          },
+          "reward": 0.375,
+          "feedback": "\u2705 ambulance: 1 sent (min 1) (+0.10) | \u26a0\ufe0f police: 2 sent but 1 needed (+0.075) | \u274c fire: 1 needed, none sent (-0.10) | \u2705 priority 4 correct (+0.20) | \u2705 backup not needed (+0.10)"
+        },
+        {
+          "call_id": "M004",
+          "incident_type": "crime",
+          "severity": "critical",
+          "action": {
+            "ambulance_units": 0,
+            "police_units": 5,
+            "fire_units": 0,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Armed bank robbery with hostages requires maximum police response; no medical units available; potential for casualties warrants backup request"
+          },
+          "reward": 0.5,
+          "feedback": "\u274c ambulance: 1 needed, none sent (-0.10) | \u2705 police: 5 sent (min 5) (+0.10) | \u2705 priority 4 correct (+0.20) | \u2705 backup needed (+0.10) | \ud83c\udfc1 Episode complete! Total score: 1.650"
+        }
+      ]
+    },
+    "hard": {
+      "task": "hard",
+      "calls_handled": 4,
+      "raw_score": 2.225,
+      "normalized_score": 0.6953,
+      "per_call": [
+        {
+          "call_id": "H003",
+          "incident_type": "multi-hazard",
+          "severity": "critical",
+          "action": {
+            "ambulance_units": 4,
+            "police_units": 2,
+            "fire_units": 4,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Critical multi-casualty hazmat derailment: 4 ambulances for multiple injuries, 4 fire for hazmat/chemical leak, 2 police for scene control; backup requested for large-scale incident"
+          },
+          "reward": 0.55,
+          "feedback": "\u26a0\ufe0f ambulance: 4 sent but 3 needed (+0.075) | \u2705 police: 2 sent (min 2) (+0.10) | \u26a0\ufe0f fire: 4 sent but 3 needed (+0.075) | \u2705 priority 4 correct (+0.20) | \u2705 backup needed (+0.10)"
+        },
+        {
+          "call_id": "H002",
+          "incident_type": "multi-hazard",
+          "severity": "critical",
+          "action": {
+            "ambulance_units": 1,
+            "police_units": 5,
+            "fire_units": 0,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Active shooter with unknown casualties: max police units for threat neutralization and crowd control, single available ambulance for critical injuries, request backup for multi-casualty incident"
+          },
+          "reward": 0.45,
+          "feedback": "\u26a0\ufe0f ambulance: 1 sent but 2 needed (+0.05) | \u2705 police: 5 sent (min 5) (+0.10) | \u2705 priority 4 correct (+0.20) | \u2705 backup needed (+0.10)"
+        },
+        {
+          "call_id": "H001",
+          "incident_type": "multi-hazard",
+          "severity": "critical",
+          "action": {
+            "ambulance_units": 5,
+            "police_units": 1,
+            "fire_units": 5,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Major gas explosion with multiple casualties, fire, and trapped residents requires maximum response despite limited available units. Request immediate mutual aid."
+          },
+          "reward": 0.5,
+          "feedback": "\u26a0\ufe0f ambulance: 5 sent but 3 needed (+0.075) | \u26a0\ufe0f police: 1 sent but 2 needed (+0.05) | \u26a0\ufe0f fire: 5 sent but 3 needed (+0.075) | \u2705 priority 4 correct (+0.20) | \u2705 backup needed (+0.10)"
+        },
+        {
+          "call_id": "H004",
+          "incident_type": "multi-hazard",
+          "severity": "critical",
+          "action": {
+            "ambulance_units": 5,
+            "police_units": 5,
+            "fire_units": 4,
+            "priority_level": 4,
+            "backup_requested": true,
+            "reasoning": "Multi-casualty incident with stab wound, fire, and crowd control issues requiring maximum resources and mutual aid"
+          },
+          "reward": 0.725,
+          "feedback": "\u26a0\ufe0f ambulance: 5 sent but 2 needed (+0.075) | \u26a0\ufe0f police: 5 sent but 3 needed (+0.075) | \u26a0\ufe0f fire: 4 sent but 1 needed (+0.075) | \u2705 priority 4 correct (+0.20) | \u2705 backup needed (+0.10) | \ud83c\udfc1 Episode complete! Total score: 2.225"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "easy": 0.4844,
+    "medium": 0.5156,
+    "hard": 0.6953
+  },
+  "overall_avg": 0.5651
+}

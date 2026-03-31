@@ -1,0 +1,54 @@
+spec_version: 1
+name: dispatch_grid
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+
+metadata:
+  title: Emergency Response Dispatch System
+  description: >
+    An AI agent acts as an emergency dispatcher, receiving emergency calls
+    and deciding which units to deploy (ambulance, police, fire) along with
+    priority levels, unit counts, and backup requests.
+  author: dispatch_grid team
+  tags:
+    - emergency-response
+    - real-world
+    - sequential-decision
+    - rl-environment
+
+tasks:
+  - id: easy
+    name: Basic Emergency Dispatch
+    difficulty: easy
+    description: Single-type emergencies with clear descriptions. Classify and dispatch.
+
+  - id: medium
+    name: Ambiguous & Multi-Type Dispatch
+    difficulty: medium
+    description: Ambiguous calls requiring multi-unit responses and resource awareness.
+
+  - id: hard
+    name: Multi-Hazard Cascading Emergencies
+    difficulty: hard
+    description: Complex multi-hazard incidents requiring maximum resources and backup.
+
+reward:
+  range: [-1.0, 1.0]
+  components:
+    - name: dispatch_type
+      weight: 0.35
+      description: Correct unit type dispatched
+    - name: priority_level
+      weight: 0.20
+      description: Appropriate priority assignment
+    - name: units_dispatched
+      weight: 0.15
+      description: Sufficient units sent
+    - name: backup_decision
+      weight: 0.10
+      description: Correct backup request decision
+    - name: episode_completion
+      weight: 0.20
+      description: Bonus for completing the full episode
