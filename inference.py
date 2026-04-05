@@ -8,7 +8,8 @@ import json
 import os
 import sys
 from typing import List, Optional
-
+from dotenv import load_dotenv
+load_dotenv()
 from openai import OpenAI
 
 from client import DispatchGridEnv
