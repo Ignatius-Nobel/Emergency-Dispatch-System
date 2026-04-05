@@ -7,7 +7,10 @@ from typing import Dict
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
-from .models import DispatchGridAction, DispatchGridObservation
+try:
+    from .models import DispatchGridAction, DispatchGridObservation
+except ImportError:
+    from models import DispatchGridAction, DispatchGridObservation
 
 
 class DispatchGridEnv(EnvClient[DispatchGridAction, DispatchGridObservation, State]):
