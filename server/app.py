@@ -79,6 +79,7 @@ TASK_DEFINITIONS = [
         "example_correct_action": {
             "ambulance_units": 1, "police_units": 0, "fire_units": 0,
             "priority_level": 3, "backup_requested": False,
+            "hospital_choice": "nearest", "coordination_level": "none", "ambulance_staging": "dispatch",
         },
     },
     {
@@ -94,6 +95,7 @@ TASK_DEFINITIONS = [
         "example_correct_action": {
             "ambulance_units": 1, "police_units": 1, "fire_units": 1,
             "priority_level": 4, "backup_requested": False,
+            "hospital_choice": "nearest", "coordination_level": "none", "ambulance_staging": "dispatch",
         },
     },
     {
@@ -109,6 +111,23 @@ TASK_DEFINITIONS = [
         "example_correct_action": {
             "ambulance_units": 3, "police_units": 2, "fire_units": 3,
             "priority_level": 4, "backup_requested": True,
+            "hospital_choice": "regional", "coordination_level": "mci_protocol", "ambulance_staging": "stage_nearby",
+        },
+    },
+    {
+        "task_id": "crisis",
+        "name": "Crisis - Resource-Strained Emergencies",
+        "difficulty": "Crisis",
+        "description": (
+            "Maximum strain scenario: both hospitals near capacity, no district reserves. "
+            "Requires careful coordination, hospital routing, and staging decisions."
+        ),
+        "num_calls_per_episode": 4,
+        "example_call": "Building collapse with multiple trapped workers. Dust cloud visible.",
+        "example_correct_action": {
+            "ambulance_units": 3, "police_units": 2, "fire_units": 3,
+            "priority_level": 4, "backup_requested": True,
+            "hospital_choice": "regional", "coordination_level": "mci_protocol", "ambulance_staging": "stage_nearby",
         },
     },
 ]
@@ -126,6 +145,9 @@ async def list_tasks():
             "fire_units": "int 0-5",
             "priority_level": "int 1-4",
             "backup_requested": "bool",
+            "hospital_choice": "str: 'nearest' | 'regional' | 'auto'",
+            "coordination_level": "str: 'none' | 'mutual_aid' | 'mci_protocol'",
+            "ambulance_staging": "str: 'dispatch' | 'stage_nearby' | 'on_scene_hold'",
         },
     })
 
@@ -144,6 +166,9 @@ class GraderRequest(BaseModel):
     fire_units: int = 0
     priority_level: int
     backup_requested: bool = False
+    hospital_choice: str = "auto"
+    coordination_level: str = "none"
+    ambulance_staging: str = "dispatch"
 
 
 @app.post("/grader")
@@ -162,6 +187,9 @@ async def grade_action(request: GraderRequest):
         fire_units=request.fire_units,
         priority_level=request.priority_level,
         backup_requested=request.backup_requested,
+        hospital_choice=request.hospital_choice,
+        coordination_level=request.coordination_level,
+        ambulance_staging=request.ambulance_staging,
     )
 
     raw_reward, feedback = compute_reward(action, call)

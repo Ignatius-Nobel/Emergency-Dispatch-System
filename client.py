@@ -39,6 +39,9 @@ class DispatchGridEnv(EnvClient[DispatchGridAction, DispatchGridObservation, Sta
             "priority_level": action.priority_level,
             "backup_requested": action.backup_requested,
             "notes": action.notes,
+            "hospital_choice": action.hospital_choice,
+            "coordination_level": action.coordination_level,
+            "ambulance_staging": action.ambulance_staging,
         }
 
     def _parse_result(self, payload: Dict) -> StepResult[DispatchGridObservation]:
@@ -60,6 +63,27 @@ class DispatchGridEnv(EnvClient[DispatchGridAction, DispatchGridObservation, Sta
             available_police=obs_data.get("available_police", 8),
             available_fire=obs_data.get("available_fire", 4),
             avg_response_time_minutes=obs_data.get("avg_response_time_minutes", 0.0),
+            # Hospital tracking
+            hospital_a_name=obs_data.get("hospital_a_name", ""),
+            hospital_a_icu_beds=obs_data.get("hospital_a_icu_beds", 0),
+            hospital_a_general_beds=obs_data.get("hospital_a_general_beds", 0),
+            hospital_a_trauma_capable=obs_data.get("hospital_a_trauma_capable", False),
+            hospital_a_distance_minutes=obs_data.get("hospital_a_distance_minutes", 0),
+            hospital_b_name=obs_data.get("hospital_b_name", ""),
+            hospital_b_icu_beds=obs_data.get("hospital_b_icu_beds", 0),
+            hospital_b_general_beds=obs_data.get("hospital_b_general_beds", 0),
+            hospital_b_trauma_capable=obs_data.get("hospital_b_trauma_capable", False),
+            hospital_b_distance_minutes=obs_data.get("hospital_b_distance_minutes", 0),
+            nearest_hospital=obs_data.get("nearest_hospital", ""),
+            recommended_hospital=obs_data.get("recommended_hospital", ""),
+            # Coordination state
+            district_reserve_units=obs_data.get("district_reserve_units", 6),
+            mci_protocol_active=obs_data.get("mci_protocol_active", False),
+            coordination_cost_remaining=obs_data.get("coordination_cost_remaining", 0),
+            # Resource replenishment
+            ambulances_returning_in=obs_data.get("ambulances_returning_in", 0),
+            police_returning_in=obs_data.get("police_returning_in", 0),
+            fire_returning_in=obs_data.get("fire_returning_in", 0),
             done=payload.get("done", False),
             reward=payload.get("reward"),
         )

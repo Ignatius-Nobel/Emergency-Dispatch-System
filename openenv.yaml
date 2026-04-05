@@ -34,21 +34,29 @@ tasks:
     difficulty: hard
     description: Complex multi-hazard incidents requiring maximum resources and backup.
 
+  - id: crisis
+    name: Resource-Strained Emergencies
+    difficulty: crisis
+    description: Maximum strain scenario with hospitals near capacity and no district reserves. Requires careful coordination, hospital routing, and staging decisions.
+
 reward:
   range: [-1.0, 1.0]
   components:
     - name: dispatch_type
-      weight: 0.35
-      description: Correct unit type dispatched
+      weight: 0.30
+      description: Correct unit type dispatched (ambulance/police/fire)
     - name: priority_level
       weight: 0.20
-      description: Appropriate priority assignment
-    - name: units_dispatched
+      description: Appropriate priority assignment (1-4)
+    - name: coordination_decision
       weight: 0.15
-      description: Sufficient units sent
-    - name: backup_decision
+      description: Correct coordination tier (none/mutual_aid/mci_protocol)
+    - name: hospital_routing
+      weight: 0.15
+      description: Correct hospital choice based on capacity and trauma capability
+    - name: staging_appropriateness
       weight: 0.10
-      description: Correct backup request decision
+      description: Correct ambulance staging decision
     - name: episode_completion
       weight: 0.20
-      description: Bonus for completing the full episode
+      description: Bonus for completing all 4 calls in episode

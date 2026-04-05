@@ -48,11 +48,24 @@ class DispatchGridAction(Action):
     )
     backup_requested: bool = Field(
         default=False,
-        description="Whether to request backup from neighboring districts",
+        description="Whether to request backup from neighboring districts (legacy field)",
     )
     notes: Optional[str] = Field(
         default=None,
         description="Optional dispatcher notes",
+    )
+    # Enhanced action fields (FEATURE_UPGRADE.md)
+    hospital_choice: str = Field(
+        default="auto",
+        description="Hospital selection: 'nearest' | 'regional' | 'auto'",
+    )
+    coordination_level: str = Field(
+        default="none",
+        description="Coordination tier: 'none' | 'mutual_aid' | 'mci_protocol'",
+    )
+    ambulance_staging: str = Field(
+        default="dispatch",
+        description="Ambulance staging: 'dispatch' | 'stage_nearby' | 'on_scene_hold'",
     )
 
     @model_validator(mode="after")
@@ -88,6 +101,9 @@ class EmergencyCall(object):
         correct_dispatch: dict,   # e.g. {"ambulance": 1, "police": 2, "fire": 0}
         correct_priority: int,
         needs_backup: bool,
+        coordination_tier: str = "none",  # "none" | "mutual_aid" | "mci_protocol"
+        correct_hospital: str = "nearest",  # "nearest" | "regional"
+        correct_staging: str = "dispatch",  # "dispatch" | "stage_nearby" | "on_scene_hold"
     ):
         self.call_id = call_id
         self.incident_type = incident_type
@@ -98,6 +114,9 @@ class EmergencyCall(object):
         self.correct_dispatch = correct_dispatch  # dict with ambulance/police/fire min units
         self.correct_priority = correct_priority
         self.needs_backup = needs_backup
+        self.coordination_tier = coordination_tier
+        self.correct_hospital = correct_hospital
+        self.correct_staging = correct_staging
 
 
 class DispatchGridObservation(Observation):
@@ -126,3 +145,29 @@ class DispatchGridObservation(Observation):
     available_police: int = Field(default=8, description="Available police units")
     available_fire: int = Field(default=4, description="Available fire units")
     avg_response_time_minutes: float = Field(default=0.0, description="Average response time so far")
+
+    # Hospital tracking (FEATURE_UPGRADE.md)
+    hospital_a_name: str = Field(default="", description="Hospital A name")
+    hospital_a_icu_beds: int = Field(default=0, description="Hospital A ICU beds available")
+    hospital_a_general_beds: int = Field(default=0, description="Hospital A general beds available")
+    hospital_a_trauma_capable: bool = Field(default=False, description="Hospital A trauma capability")
+    hospital_a_distance_minutes: int = Field(default=0, description="Hospital A distance in minutes")
+
+    hospital_b_name: str = Field(default="", description="Hospital B name")
+    hospital_b_icu_beds: int = Field(default=0, description="Hospital B ICU beds available")
+    hospital_b_general_beds: int = Field(default=0, description="Hospital B general beds available")
+    hospital_b_trauma_capable: bool = Field(default=False, description="Hospital B trauma capability")
+    hospital_b_distance_minutes: int = Field(default=0, description="Hospital B distance in minutes")
+
+    nearest_hospital: str = Field(default="", description="Nearest hospital: 'A' or 'B'")
+    recommended_hospital: str = Field(default="", description="System recommended hospital")
+
+    # Coordination state (FEATURE_UPGRADE.md)
+    district_reserve_units: int = Field(default=6, description="Shared mutual-aid pool units")
+    mci_protocol_active: bool = Field(default=False, description="MCI protocol active flag")
+    coordination_cost_remaining: int = Field(default=0, description="Remaining coordination requests viable")
+
+    # Resource replenishment (FEATURE_UPGRADE.md)
+    ambulances_returning_in: int = Field(default=0, description="Calls until ambulances return")
+    police_returning_in: int = Field(default=0, description="Calls until police return")
+    fire_returning_in: int = Field(default=0, description="Calls until fire units return")
