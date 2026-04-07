@@ -4,7 +4,7 @@ from client import DispatchGridEnv
 
 async def main():
     # Connect to existing server
-    env = DispatchGridEnv(base_url="http://localhost:8000")
+    env = DispatchGridEnv(base_url="https://ignatius-nobel-Emergency-Dispatch-System.hf.space")
 
     # Use as normal
     result = await env.reset()

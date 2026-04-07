@@ -153,7 +153,7 @@ async def main() -> None:
         env = await DispatchGridEnv.from_docker_image(LOCAL_IMAGE_NAME)
     else:
         # Fallback to local running server default standard configuration
-        env = DispatchGridEnv(base_url="http://localhost:8000")
+        env = DispatchGridEnv(base_url="https://ignatius-nobel-Emergency-Dispatch-System.hf.space")
 
     rewards: List[float] = []
     steps_taken = 0
