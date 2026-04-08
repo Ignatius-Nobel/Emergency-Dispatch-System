@@ -114,22 +114,6 @@ TASK_DEFINITIONS = [
             "hospital_choice": "regional", "coordination_level": "mci_protocol", "ambulance_staging": "stage_nearby",
         },
     },
-    {
-        "task_id": "crisis",
-        "name": "Crisis - Resource-Strained Emergencies",
-        "difficulty": "Crisis",
-        "description": (
-            "Maximum strain scenario: both hospitals near capacity, no district reserves. "
-            "Requires careful coordination, hospital routing, and staging decisions."
-        ),
-        "num_calls_per_episode": 4,
-        "example_call": "Building collapse with multiple trapped workers. Dust cloud visible.",
-        "example_correct_action": {
-            "ambulance_units": 3, "police_units": 2, "fire_units": 3,
-            "priority_level": 4, "backup_requested": True,
-            "hospital_choice": "regional", "coordination_level": "mci_protocol", "ambulance_staging": "stage_nearby",
-        },
-    },
 ]
 
 

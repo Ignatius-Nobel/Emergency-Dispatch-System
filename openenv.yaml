@@ -1,66 +1,31 @@
-spec_version: 1
 name: dispatch_grid
-type: space
-runtime: fastapi
-app: server.app:app
-port: 8000
 
-metadata:
-  title: Emergency Response Dispatch System
-  description: >
-    An AI agent acts as an emergency dispatcher, receiving emergency calls
-    and deciding which units to deploy (ambulance, police, fire) along with
-    priority levels, unit counts, and backup requests.
-  author: dispatch_grid team
-  tags:
-    - emergency-response
-    - real-world
-    - sequential-decision
-    - rl-environment
+description: >
+  An AI agent acts as an emergency dispatcher, receiving emergency calls
+  and deciding which units to deploy (ambulance, police, fire) along with
+  priority levels, unit counts, and coordination decisions.
+
+version: "1.0.0"
+
+entrypoints:
+  http:
+    base_url: http://localhost:8000
 
 tasks:
-  - id: easy
-    name: Basic Emergency Dispatch
-    difficulty: easy
+  - name: easy
     description: Single-type emergencies with clear descriptions. Classify and dispatch.
-    grader: graders.EasyGrader
 
-  - id: medium
-    name: Ambiguous & Multi-Type Dispatch
-    difficulty: medium
+  - name: medium
     description: Ambiguous calls requiring multi-unit responses and resource awareness.
-    grader: graders.MediumGrader
 
-  - id: hard
-    name: Multi-Hazard Cascading Emergencies
-    difficulty: hard
+  - name: hard
     description: Complex multi-hazard incidents requiring maximum resources and backup.
-    grader: graders.HardGrader
 
-  - id: crisis
-    name: Resource-Strained Emergencies
-    difficulty: crisis
-    description: Maximum strain scenario with hospitals near capacity and no district reserves. Requires careful coordination, hospital routing, and staging decisions.
-    grader: graders.CrisisGrader
+interface:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
 
-reward:
-  range: [-1.0, 1.0]
-  components:
-    - name: dispatch_type
-      weight: 0.30
-      description: Correct unit type dispatched (ambulance/police/fire)
-    - name: priority_level
-      weight: 0.20
-      description: Appropriate priority assignment (1-4)
-    - name: coordination_decision
-      weight: 0.15
-      description: Correct coordination tier (none/mutual_aid/mci_protocol)
-    - name: hospital_routing
-      weight: 0.15
-      description: Correct hospital choice based on capacity and trauma capability
-    - name: staging_appropriateness
-      weight: 0.10
-      description: Correct ambulance staging decision
-    - name: episode_completion
-      weight: 0.20
-      description: Bonus for completing all 4 calls in episode
+requirements:
+  deterministic: true
+  max_steps: 10
