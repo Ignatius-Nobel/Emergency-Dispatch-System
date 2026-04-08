@@ -1,51 +1,87 @@
 #!/usr/bin/env python3
 """
-Inference Script — Emergency Response Dispatch System (OpenAI Client)
+OpenEnv hackathon inference script — Emergency Response Dispatch System.
+
+Runs an LLM agent against the DispatchGridEnvironment, emitting validator-exact
+stdout lines. Runs one episode per difficulty (easy, medium, hard).
 """
 
-import asyncio
+from __future__ import annotations
+
 import json
 import os
 import sys
-from typing import List, Optional
+import traceback
+from typing import Any, List, Optional
+
 from dotenv import load_dotenv
 load_dotenv()
-from openai import OpenAI
 
-from client import DispatchGridEnv
+from openai import OpenAI
+from server.dispatch_grid_environment import DispatchGridEnvironment
 from models import DispatchGridAction
 
+# ── configuration ────────────────────────────────────────────────────────────
 
-LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-
+BENCHMARK = os.getenv("BENCHMARK", "dispatch_grid")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.1-8b-instant")
-TASK_NAME = os.getenv("DISPATCH_GRID_TASK", "easy")
-BENCHMARK = os.getenv("DISPATCH_GRID_BENCHMARK", "dispatch_grid")
-
-# Each episode has 4 calls. Score is maxed at ((n * 0.60) + 0.20)
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 MAX_STEPS = 10
-SUCCESS_SCORE_THRESHOLD = 0.5  # normalized score in [0, 1]
+SUCCESS_SCORE_THRESHOLD = 0.5
 
 
-def log_start(task: str, env: str, model: str) -> None:
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+def _episode_difficulties() -> list[str]:
+    default_order = ("easy", "medium", "hard")
+    raw = os.environ.get("OPENENV_DIFFICULTIES", "")
+    if not raw.strip():
+        return list(default_order)
+    want = {x.strip().lower() for x in raw.split(",") if x.strip()}
+    picked = [d for d in default_order if d in want]
+    return picked if picked else list(default_order)
 
 
-def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
-    error_val = error if error else "null"
-    done_val = str(done).lower()
+EPISODE_DIFFICULTIES: list[str] = _episode_difficulties()
+
+# ── stdout helpers ───────────────────────────────────────────────────────────
+
+
+def _emit_start(task: str) -> None:
+    print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+
+
+def _emit_step(
+    step: int,
+    action_str: str,
+    reward: float,
+    done: bool,
+    error: Optional[str],
+) -> None:
+    done_s = "true" if done else "false"
+    err_s = error[:200] if error is not None else "null"
     print(
-        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        f"[STEP] step={step} action={action_str} "
+        f"reward={reward:.2f} done={done_s} error={err_s}",
         flush=True,
     )
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+def _emit_end(
+    success: bool,
+    steps: int,
+    score: float,
+    rewards: list[float],
+) -> None:
+    success_s = "true" if success else "false"
+    rewards_s = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={success_s} steps={steps} "
+        f"score={score:.3f} rewards={rewards_s}",
+        flush=True,
+    )
 
+
+# ── prompt construction ──────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are an expert emergency dispatch operator.
 Given an emergency call, decide exactly how many units of each type to send.
@@ -93,6 +129,9 @@ Calls remaining: {obs.get('calls_remaining', 0)}
 Respond with JSON only."""
 
 
+# ── model interaction ────────────────────────────────────────────────────────
+
+
 def get_model_action(client: OpenAI, obs_dict: dict) -> dict:
     user_prompt = build_user_prompt(obs_dict)
     fallback = {
@@ -103,7 +142,7 @@ def get_model_action(client: OpenAI, obs_dict: dict) -> dict:
         "backup_requested": False,
         "hospital_choice": "auto",
         "coordination_level": "none",
-        "ambulance_staging": "dispatch"
+        "ambulance_staging": "dispatch",
     }
     try:
         completion = client.chat.completions.create(
@@ -124,7 +163,6 @@ def get_model_action(client: OpenAI, obs_dict: dict) -> dict:
             content = content.strip()
 
         d = json.loads(content)
-        # Ensure all required fields exist
         out = {
             "ambulance_units": max(0, min(5, int(d.get("ambulance_units", fallback["ambulance_units"])))),
             "police_units": max(0, min(5, int(d.get("police_units", fallback["police_units"])))),
@@ -133,10 +171,9 @@ def get_model_action(client: OpenAI, obs_dict: dict) -> dict:
             "backup_requested": bool(d.get("backup_requested", fallback["backup_requested"])),
             "hospital_choice": d.get("hospital_choice", "auto"),
             "coordination_level": d.get("coordination_level", "none"),
-            "ambulance_staging": d.get("ambulance_staging", "dispatch")
+            "ambulance_staging": d.get("ambulance_staging", "dispatch"),
         }
 
-        # Guard: at least one unit must be > 0
         if out["ambulance_units"] == 0 and out["police_units"] == 0 and out["fire_units"] == 0:
             out["ambulance_units"] = 1
 
@@ -146,69 +183,71 @@ def get_model_action(client: OpenAI, obs_dict: dict) -> dict:
         return fallback
 
 
-async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "not-needed")
+# ── main loop ────────────────────────────────────────────────────────────────
 
-    if LOCAL_IMAGE_NAME:
-        env = await DispatchGridEnv.from_docker_image(LOCAL_IMAGE_NAME)
-    else:
-        # Fallback to local running server default standard configuration
-        env = DispatchGridEnv(base_url="https://ignatius-nobel-Emergency-Dispatch-System.hf.space")
 
+def run_one_episode(
+    env: DispatchGridEnvironment,
+    client: OpenAI,
+    difficulty: str,
+) -> None:
+    """One full episode: [START] ... [STEP]* ... [END] for a single difficulty."""
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
-    success = False
 
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
+    _emit_start(difficulty)
 
     try:
-        result = await env.reset()
-        obs = result.observation
-        
+        obs = env.reset(seed=0, difficulty=difficulty)
+        obs_dict = obs.model_dump()
+
         for step in range(1, MAX_STEPS + 1):
-            if result.done:
-                break
-                
-            obs_dict = obs.model_dump()
             if obs_dict.get("call_id") == "DONE":
                 break
 
             action_data = get_model_action(client, obs_dict)
-            action_str = json.dumps(action_data).replace(" ", "")
+            action_str = json.dumps(action_data, separators=(",", ":"))
             action = DispatchGridAction(**action_data)
 
-            result = await env.step(action)
-            obs = result.observation
+            obs = env.step(action)
+            obs_dict = obs.model_dump()
 
-            reward = result.reward or 0.0
-            done = result.done
+            reward = obs.last_action_reward or 0.0
+            done = obs.done
             error = None
 
             rewards.append(reward)
             steps_taken = step
 
-            log_step(step=step, action=action_str, reward=reward, done=done, error=error)
+            _emit_step(step=step, action_str=action_str, reward=reward, done=done, error=error)
 
             if done:
                 break
 
         final_raw_score = obs.cumulative_score
         n = len(rewards)
-        # Max score is 0.60 per call + 0.20 completion bonus
         max_possible_score = (n * 0.60) + 0.20 if n > 0 else 1.0
-        
         score = final_raw_score / max_possible_score
-        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
-        success = score >= SUCCESS_SCORE_THRESHOLD
+        score = min(max(score, 0.0), 1.0)
 
-    finally:
-        try:
-            await env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error (container cleanup): {e}", file=sys.stderr)
-        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    except Exception:
+        error_msg = traceback.format_exc().splitlines()[-1][:200]
+        if not rewards:
+            _emit_step(1, "{}", 0.0, True, error_msg)
+            steps_taken = max(steps_taken, 1)
+
+    success = score >= SUCCESS_SCORE_THRESHOLD
+    _emit_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
+
+def main() -> None:
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "not-needed")
+    env = DispatchGridEnvironment()
+
+    for difficulty in EPISODE_DIFFICULTIES:
+        run_one_episode(env, client, difficulty)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

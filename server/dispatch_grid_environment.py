@@ -588,8 +588,16 @@ class DispatchGridEnvironment(Environment):
         self._fire_returning_in = 0
         self._mci_protocol_active = False
 
-    def reset(self) -> DispatchGridObservation:
-        self._state = State(episode_id=str(uuid4()), step_count=0)
+    def reset(self, seed=None, episode_id=None, **kwargs) -> DispatchGridObservation:
+        # Allow switching task/difficulty on reset
+        difficulty = kwargs.get("difficulty") or kwargs.get("task")
+        if difficulty and difficulty in TASK_CALL_MAP:
+            self._task = difficulty
+
+        if seed is not None:
+            random.seed(seed)
+
+        self._state = State(episode_id=episode_id or str(uuid4()), step_count=0)
         self._cumulative_score = 0.0
         self._total_response_time = 0.0
         self._ambulances = 5
