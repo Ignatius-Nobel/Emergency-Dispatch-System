@@ -41,6 +41,7 @@ tasks:
     name: Resource-Strained Emergencies
     difficulty: crisis
     description: Maximum strain scenario with hospitals near capacity and no district reserves. Requires careful coordination, hospital routing, and staging decisions.
+    grader: graders.CrisisGrader
 
 reward:
   range: [-1.0, 1.0]
