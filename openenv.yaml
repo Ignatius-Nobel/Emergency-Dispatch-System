@@ -23,16 +23,19 @@ tasks:
     name: Basic Emergency Dispatch
     difficulty: easy
     description: Single-type emergencies with clear descriptions. Classify and dispatch.
+    grader: graders.EasyGrader
 
   - id: medium
     name: Ambiguous & Multi-Type Dispatch
     difficulty: medium
     description: Ambiguous calls requiring multi-unit responses and resource awareness.
+    grader: graders.MediumGrader
 
   - id: hard
     name: Multi-Hazard Cascading Emergencies
     difficulty: hard
     description: Complex multi-hazard incidents requiring maximum resources and backup.
+    grader: graders.HardGrader
 
   - id: crisis
     name: Resource-Strained Emergencies
