@@ -77,6 +77,8 @@ python3 demo/run_demo.py --seed 0 --task hard
 
 With the HTTP server running, JSON metrics are also available at `GET /demo/compare?seed=0&task=hard`.
 
+**Raw HTTP (`requests`, curl):** `POST /reset` returns a header `X-Session-Id`. Send that header on every `POST /step` and `GET /state` for the same episode. Step body must be `{"action": { ... }}`. Helpers: [`openenv_http_session.py`](openenv_http_session.py). WebSocket clients (e.g. `DispatchGridEnv().sync()`) are unchanged.
+
 **Talking points (2–3 minutes):**
 
 1. Fake traffic regimes (`light` / `normal` / `heavy`) scale travel time; observations expose `traffic_regime` and `last_eta_minutes`.

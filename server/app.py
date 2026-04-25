@@ -20,12 +20,24 @@ Hackathon-required endpoints:
     POST /baseline → Run baseline agent on all tasks
 """
 
+import asyncio
 import json
 import os
+import threading
 import time
+from typing import Any, Dict, Tuple, cast
+from uuid import uuid4
 
 try:
     from openenv.core.env_server.http_server import create_app
+    from openenv.core.env_server.serialization import deserialize_action, serialize_observation
+    from openenv.core.env_server.types import (
+        ResetRequest,
+        ResetResponse,
+        State,
+        StepRequest,
+        StepResponse,
+    )
 except Exception as e:
     raise ImportError("openenv is required. Install with: uv sync") from e
 
@@ -46,7 +58,9 @@ except ImportError:
             DispatchGridEnvironment, EASY_CALLS, MEDIUM_CALLS, HARD_CALLS, compute_reward,
         )
 
+from fastapi import Body, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
@@ -60,6 +74,127 @@ app = create_app(
     env_name="dispatch_grid",
     max_concurrent_envs=10,
 )
+
+# ---------------------------------------------------------------------------
+# Fix: stateful HTTP /reset, /step, /state (OpenEnv default closes env each call)
+# Clients must pass header X-Session-Id from the first /reset on every /step and /state.
+# ---------------------------------------------------------------------------
+
+SESSION_ID_HEADER: str = "X-Session-Id"
+
+_MAX_HTTP_ENV_SESSIONS: int = 10
+_http_env_lock: threading.Lock = threading.Lock()
+_http_env_sessions: Dict[str, DispatchGridEnvironment] = {}
+_http_env_session_order: list[str] = []
+
+
+def _http_strip_stateless_openenv_routes() -> None:
+    """Remove default create_app handlers that create+close a new env on every request."""
+    keep: list = []
+    remove_pairs = {("/reset", "POST"), ("/step", "POST"), ("/state", "GET")}
+    for route in list(app.router.routes):
+        if isinstance(route, APIRoute) and len(route.methods) == 1:
+            meth = next(iter(route.methods))
+            if (route.path, cast(str, meth)) in remove_pairs:
+                continue
+        keep.append(route)
+    app.router.routes = keep  # type: ignore[assignment]
+
+
+def _http_evict_oldest_session_if_full() -> None:
+    while len(_http_env_sessions) >= _MAX_HTTP_ENV_SESSIONS and _http_env_session_order:
+        old_id = _http_env_session_order.pop(0)
+        old_env = _http_env_sessions.pop(old_id, None)
+        if old_env is not None and hasattr(old_env, "close"):
+            try:
+                old_env.close()  # type: ignore[no-untyped-call]
+            except Exception:  # pragma: no cover
+                pass
+
+
+def _http_get_or_create_session(
+    request: Request, create_new_if_no_header: bool
+) -> Tuple[str, DispatchGridEnvironment, bool]:
+    """
+    Return (session_id, env, created_new).
+    If X-Session-Id is missing and create_new_if_no_header, allocate a new session.
+    If X-Session-Id is present and unknown, start a new env under that id (client reconnect).
+    """
+    header_sid = request.headers.get("x-session-id")
+    with _http_env_lock:
+        if header_sid and header_sid in _http_env_sessions:
+            return header_sid, _http_env_sessions[header_sid], False
+        if not header_sid and not create_new_if_no_header:
+            raise KeyError("missing session")
+        _http_evict_oldest_session_if_full()
+        new_id = header_sid or str(uuid4())
+        env = DispatchGridEnvironment(task="easy")
+        _http_env_sessions[new_id] = env
+        _http_env_session_order.append(new_id)
+        return new_id, env, True
+
+
+async def _http_persist_reset(
+    request: Request, response: Response, body: ResetRequest
+) -> ResetResponse:
+    sid, env, _is_new = _http_get_or_create_session(request, create_new_if_no_header=True)
+    kwargs: Dict[str, Any] = body.model_dump(exclude_unset=True)
+    observation = await asyncio.to_thread(env.reset, **kwargs)
+    payload = serialize_observation(observation)
+    out = ResetResponse(**payload)
+    response.headers[SESSION_ID_HEADER] = sid
+    return out
+
+
+async def _http_persist_step(request: Request, body: StepRequest) -> StepResponse:
+    with _http_env_lock:
+        header_sid = request.headers.get("x-session-id")
+        if not header_sid or header_sid not in _http_env_sessions:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing or unknown X-Session-Id. Call POST /reset first and reuse the returned session id.",
+            )
+        env = _http_env_sessions[header_sid]
+    try:
+        action = deserialize_action(body.action, DispatchGridAction)
+    except Exception as exc:  # pydantic validation
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    observation = await asyncio.to_thread(env.step, action)
+    return StepResponse(**serialize_observation(observation))
+
+
+def _http_persist_get_state(request: Request) -> State:
+    with _http_env_lock:
+        header_sid = request.headers.get("x-session-id")
+        if not header_sid or header_sid not in _http_env_sessions:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing or unknown X-Session-Id. Call POST /reset first and reuse the returned session id.",
+            )
+        env = _http_env_sessions[header_sid]
+    st = env.state
+    if isinstance(st, State):
+        return st
+    return State.model_validate(st)  # type: ignore[call-arg, arg-type, misc]
+
+
+_http_strip_stateless_openenv_routes()
+
+@app.post("/reset", response_model=ResetResponse, tags=["Environment Control"])
+async def _dispatch_http_reset_persist(
+    request: Request, response: Response, body: ResetRequest = Body(default_factory=ResetRequest)
+) -> ResetResponse:
+    return await _http_persist_reset(request, response, body=body)
+
+
+@app.post("/step", response_model=StepResponse, tags=["Environment Control"])
+async def _dispatch_http_step_persist(request: Request, body: StepRequest) -> StepResponse:
+    return await _http_persist_step(request, body=body)
+
+
+@app.get("/state", response_model=State, tags=["State Management"])
+def _dispatch_http_state_persist(request: Request) -> State:
+    return _http_persist_get_state(request)
 
 # ---------------------------------------------------------------------------
 # /tasks

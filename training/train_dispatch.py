@@ -6,10 +6,14 @@ Requirements:
     pip install unsloth trl datasets requests pydantic matplotlib uvicorn fastapi
 """
 import sys, os, re, time, random, argparse, threading, json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "server"))
+_ROOT = os.path.join(os.path.dirname(__file__), "..")
+sys.path.insert(0, _ROOT)
+sys.path.insert(0, os.path.join(_ROOT, "server"))
 
 import requests
 import matplotlib.pyplot as plt
+
+from openenv_http_session import post_reset, post_step
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
@@ -26,9 +30,8 @@ ENV_URL = f"http://127.0.0.1:{args.port}"
 # ── Start OpenEnv server ──────────────────────────────────────────────────────
 def start_server():
     import uvicorn
-    from dispatch_grid_environment import DispatchGridEnvironment
-    from openenv.core.env_server.server import create_app
-    app = create_app(DispatchGridEnvironment)
+    from server.app import app
+
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="error")
 
 server_thread = threading.Thread(target=start_server, daemon=True)
@@ -122,7 +125,8 @@ def make_dataset(n_episodes: int):
     from datasets import Dataset
     rows = []
     for _ in range(n_episodes):
-        obs = requests.post(f"{ENV_URL}/reset", json={"task": args.task}).json()
+        _sid, data = post_reset(ENV_URL, json_body={"task": args.task})
+        obs = data["observation"]
         rows.append({"prompt": obs_to_prompt(obs)})
     return Dataset.from_list(rows)
 
@@ -137,9 +141,11 @@ def get_reward(completions, prompts, **kwargs) -> list[float]:
     for completion in completions:
         text = completion[0]["content"] if isinstance(completion, list) else completion
         try:
-            requests.post(f"{ENV_URL}/reset", json={"task": args.task})
+            sid, _ = post_reset(ENV_URL, json_body={"task": args.task})
             action = parse_action(text)
-            obs = requests.post(f"{ENV_URL}/step", json=action, timeout=5).json()
+            if "backup_requested" not in action:
+                action["backup_requested"] = False
+            obs = post_step(ENV_URL, sid, action, timeout=5)
             rewards.append(float(obs.get("reward", -0.5)))
         except Exception as e:
             print(f"  [warn] reward fn error: {e}")
@@ -162,12 +168,15 @@ def random_action() -> dict:
 def evaluate_random(n=20) -> float:
     scores = []
     for _ in range(n):
-        requests.post(f"{ENV_URL}/reset", json={"task": args.task})
+        sid, _ = post_reset(ENV_URL, json_body={"task": args.task})
         total = 0.0
         for _ in range(10):
-            obs = requests.post(f"{ENV_URL}/step", json=random_action()).json()
+            a = random_action()
+            a.setdefault("backup_requested", False)
+            obs = post_step(ENV_URL, sid, a)
             total += obs.get("reward", 0.0)
-            if obs.get("done", False): break
+            if obs.get("done", False):
+                break
         scores.append(total)
     return sum(scores) / len(scores)
 
@@ -251,13 +260,17 @@ def model_action(obs_dict: dict) -> dict:
 def evaluate_model(n=20) -> float:
     scores = []
     for _ in range(n):
-        obs = requests.post(f"{ENV_URL}/reset", json={"task": args.task}).json()
+        _sid, data = post_reset(ENV_URL, json_body={"task": args.task})
+        obs = data["observation"]
         total = 0.0
         for _ in range(10):
             action = model_action(obs)
-            obs = requests.post(f"{ENV_URL}/step", json=action).json()
-            total += obs.get("reward", 0.0)
-            if obs.get("done", False): break
+            action.setdefault("backup_requested", False)
+            data = post_step(ENV_URL, _sid, action)
+            total += data.get("reward", 0.0)
+            obs = data.get("observation", obs)
+            if data.get("done", False):
+                break
         scores.append(total)
     return sum(scores) / len(scores)
 
