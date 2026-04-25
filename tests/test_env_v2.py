@@ -10,6 +10,8 @@ sys.path.insert(0, "server")
 from dispatch_grid_environment import (  # noqa: E402
     DispatchGridEnvironment,
     HOSPITAL_CONFIGS,
+    compute_harm,
+    compute_outcome_reward,
     compute_reward,
 )
 from models import DispatchGridAction, EmergencyCall  # noqa: E402
@@ -34,6 +36,18 @@ def _synthetic_critical_medical_zone_c() -> EmergencyCall:
     )
 
 
+def _min_action(amb: int, pol: int, fir: int) -> DispatchGridAction:
+    return DispatchGridAction(
+        ambulance_units=amb,
+        police_units=pol,
+        fire_units=fir,
+        priority_level=3,
+        coordination_level="none",
+        hospital_choice="nearest",
+        ambulance_staging="dispatch",
+    )
+
+
 def _optimal_rubric_action(call: EmergencyCall) -> DispatchGridAction:
     d = call.correct_dispatch
     return DispatchGridAction(
@@ -45,6 +59,47 @@ def _optimal_rubric_action(call: EmergencyCall) -> DispatchGridAction:
         hospital_choice=call.correct_hospital,
         ambulance_staging=call.correct_staging,
     )
+
+
+def test_compute_harm_medical_shortfall_vs_eta_only():
+    """Missing ambulances on medical calls must increase harm (outcome anti–reward-hack)."""
+    call = _synthetic_critical_medical_zone_c()
+    eta, div = 10.0, False
+    h_ok = compute_harm(call, _min_action(1, 0, 0), eta, div)
+    h_cheat = compute_harm(call, _min_action(0, 1, 0), eta, div)
+    assert h_cheat > h_ok
+    r_ok, _ = compute_outcome_reward(_min_action(1, 0, 0), call, h_ok, 0.0)
+    r_cheat, _ = compute_outcome_reward(_min_action(0, 1, 0), call, h_cheat, 0.0)
+    assert r_ok > r_cheat
+
+
+def test_compute_harm_medical_multi_type_shortfall():
+    """Medical with ambulance + police in answer key: cheat dispatch must be worse than full."""
+    call = EmergencyCall(
+        call_id="SYN_MED2",
+        incident_type="medical",
+        description="Crisis + police",
+        location="x",
+        caller_info="x",
+        severity="moderate",
+        correct_dispatch={"ambulance": 1, "police": 2, "fire": 0},
+        correct_priority=3,
+        needs_backup=False,
+        coordination_tier="none",
+        correct_hospital="nearest",
+        correct_staging="dispatch",
+        zone="A",
+        patients=1,
+    )
+    eta, div = 12.0, False
+    full = _min_action(1, 2, 0)
+    cheat = _min_action(0, 1, 0)
+    hf = compute_harm(call, full, eta, div)
+    hc = compute_harm(call, cheat, eta, div)
+    assert hc > hf
+    rf, _ = compute_outcome_reward(full, call, hf, 0.0)
+    rc, _ = compute_outcome_reward(cheat, call, hc, 0.0)
+    assert rf > rc
 
 
 def test_rubric_reward_unchanged_vs_compute_reward():

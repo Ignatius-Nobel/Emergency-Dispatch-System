@@ -573,7 +573,21 @@ def compute_harm(
     harm = 0.0
 
     if it == "medical":
-        harm = eta_factor * (0.45 + 0.08 * min(patients, 5))
+        # Mix dispatch shortfall (all needed unit types) with ETA/patient load so
+        # outcome mode cannot get near-zero harm by sending wrong units or zero ambulances.
+        need_a = int(call.correct_dispatch.get("ambulance", 0))
+        need_p = int(call.correct_dispatch.get("police", 0))
+        need_f = int(call.correct_dispatch.get("fire", 0))
+        da = max(0, need_a - int(action.ambulance_units)) / max(need_a, 1) if need_a else 0.0
+        dp = max(0, need_p - int(action.police_units)) / max(need_p, 1) if need_p else 0.0
+        df = max(0, need_f - int(action.fire_units)) / max(need_f, 1) if need_f else 0.0
+        n_needed = sum(1 for x in (need_a, need_p, need_f) if x > 0)
+        if n_needed:
+            mix = (da + dp + df) / n_needed
+        else:
+            mix = 0.0
+        eta_harm = eta_factor * (0.45 + 0.08 * min(patients, 5))
+        harm = 0.5 * mix + 0.5 * eta_harm
     elif it == "fire":
         need_f = int(call.correct_dispatch.get("fire", 1))
         sent_f = int(action.fire_units)
