@@ -31,20 +31,20 @@ class DispatchGridAction(Action):
     """
 
     ambulance_units: int = Field(
-        default=0, ge=0, le=5,
-        description="Number of ambulance units (0 = not dispatched)",
+        default=0, ge=0,
+        description="Number of ambulance units (0 = not dispatched); validated in env (0-10).",
     )
     police_units: int = Field(
-        default=0, ge=0, le=5,
-        description="Number of police units (0 = not dispatched)",
+        default=0, ge=0,
+        description="Number of police units (0 = not dispatched); validated in env (0-10).",
     )
     fire_units: int = Field(
-        default=0, ge=0, le=5,
-        description="Number of fire units (0 = not dispatched)",
+        default=0, ge=0,
+        description="Number of fire units (0 = not dispatched); validated in env (0-10).",
     )
     priority_level: int = Field(
-        ..., ge=1, le=4,
-        description="Priority level: 1=low, 2=medium, 3=high, 4=critical",
+        ...,
+        description="Priority level: 1=low, 2=medium, 3=high, 4=critical; validated in env (1-4).",
     )
     backup_requested: bool = Field(
         default=False,

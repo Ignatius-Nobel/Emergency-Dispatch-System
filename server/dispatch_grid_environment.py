@@ -458,8 +458,14 @@ def compute_reward(action: DispatchGridAction, call: EmergencyCall) -> tuple[flo
             reward += 0.10
             feedback_parts.append(f"✅ {unit}: {dispatched} sent (min {needed}) (+0.10)")
         elif dispatched > needed:
-            reward += 0.075
-            feedback_parts.append(f"⚠️ {unit}: {dispatched} sent but {needed} needed (+0.075)")
+            excess = dispatched - needed
+            # Each extra unit beyond the first reduces the reward by 0.02, flooring at -0.05
+            adjusted = round(max(-0.05, 0.075 - (excess - 1) * 0.02), 4)
+            reward += adjusted
+            feedback_parts.append(
+                f"⚠️ {unit}: {dispatched} sent, {needed} needed"
+                f" (excess={excess}) ({adjusted:+.3f})"
+            )
         else:
             reward += 0.05
             feedback_parts.append(f"⚠️ {unit}: {dispatched} sent but {needed} needed (+0.05)")
@@ -477,7 +483,7 @@ def compute_reward(action: DispatchGridAction, call: EmergencyCall) -> tuple[flo
         feedback_parts.append(f"❌ priority {action.priority_level} (expected {call.correct_priority}) (-0.10)")
 
     # --- Coordination scoring (max 0.15) ---
-    correct_coord = getattr(call, "coordination_tier", "none")
+    correct_coord = call.coordination_tier
     chosen_coord = action.coordination_level
 
     if chosen_coord == correct_coord:
@@ -500,7 +506,7 @@ def compute_reward(action: DispatchGridAction, call: EmergencyCall) -> tuple[flo
         feedback_parts.append(f"⚠️ coordination '{chosen_coord}' incorrect (-0.05)")
 
     # --- Hospital routing scoring (max 0.15) ---
-    correct_hospital = getattr(call, "correct_hospital", "nearest")
+    correct_hospital = call.correct_hospital
     chosen_hospital = action.hospital_choice
 
     if chosen_hospital == correct_hospital:
@@ -520,7 +526,7 @@ def compute_reward(action: DispatchGridAction, call: EmergencyCall) -> tuple[flo
         feedback_parts.append(f"⚠️ hospital '{chosen_hospital}' incorrect (-0.05)")
 
     # --- Staging scoring (max 0.10) ---
-    correct_staging = getattr(call, "correct_staging", "dispatch")
+    correct_staging = call.correct_staging
     chosen_staging = action.ambulance_staging
 
     if chosen_staging == correct_staging:
@@ -559,6 +565,7 @@ class DispatchGridEnvironment(Environment):
     """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
+    MAX_STEPS_PER_EPISODE: int = 20
 
     def __init__(self, task: str = "easy"):
         if task not in TASK_CALL_MAP:
@@ -626,7 +633,39 @@ class DispatchGridEnvironment(Environment):
         return self._make_observation(0.0, "Episode started. First emergency call incoming.")
 
     def step(self, action: DispatchGridAction) -> DispatchGridObservation:  # type: ignore[override]
+        if self._state.step_count >= self.MAX_STEPS_PER_EPISODE:
+            return self._make_observation(
+                -0.5,
+                f"Step limit ({self.MAX_STEPS_PER_EPISODE}) exceeded. Episode force-terminated.",
+                done=True,
+            )
         self._state.step_count += 1
+
+        # --- Action validation ---
+        _VALID_COORD = {"none", "mutual_aid", "mci_protocol"}
+        _VALID_HOSPITAL = {"nearest", "regional", "auto"}
+        _VALID_STAGING = {"dispatch", "stage_nearby", "on_scene_hold"}
+        _errors = []
+        for _field, _val, _lo, _hi in [
+            ("ambulance_units", action.ambulance_units, 0, 10),
+            ("police_units", action.police_units, 0, 10),
+            ("fire_units", action.fire_units, 0, 10),
+            ("priority_level", action.priority_level, 1, 4),
+        ]:
+            if not (_lo <= _val <= _hi):
+                _errors.append(f"{_field}={_val} out of range [{_lo},{_hi}]")
+        if action.coordination_level not in _VALID_COORD:
+            _errors.append(f"invalid coordination_level: {action.coordination_level!r}")
+        if action.hospital_choice not in _VALID_HOSPITAL:
+            _errors.append(f"invalid hospital_choice: {action.hospital_choice!r}")
+        if action.ambulance_staging not in _VALID_STAGING:
+            _errors.append(f"invalid ambulance_staging: {action.ambulance_staging!r}")
+        if _errors:
+            return self._make_observation(
+                -0.2,
+                "Invalid action — " + "; ".join(_errors),
+                done=False,
+            )
 
         current_call = self._calls[self._call_index]
         reward, feedback = compute_reward(action, current_call)
@@ -685,9 +724,14 @@ class DispatchGridEnvironment(Environment):
         done = self._call_index >= len(self._calls)
 
         if done:
-            reward += 0.20
-            self._cumulative_score += 0.20
-            feedback += f" | Episode complete! Total score: {self._cumulative_score:.3f}"
+            COMPLETION_BONUS = 0.20
+            self._cumulative_score += COMPLETION_BONUS
+            reward = round(max(-1.0, min(1.0, reward + COMPLETION_BONUS)), 4)
+            feedback += (
+                f" | Episode complete!"
+                f" Total score: {self._cumulative_score:.3f}"
+                f" (+{COMPLETION_BONUS} completion bonus)"
+            )
 
         return self._make_observation(reward, feedback, done=done)
 
