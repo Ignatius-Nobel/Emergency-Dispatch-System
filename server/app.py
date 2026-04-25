@@ -137,6 +137,34 @@ async def list_tasks():
 
 
 # ---------------------------------------------------------------------------
+# /demo/compare — MVE outcome metrics (nearest vs capacity-aware)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/demo/compare")
+async def demo_compare(seed: int = 0, task: str = "hard"):
+    """Return JSON metrics for side-by-side policies (outcome reward mode)."""
+    import os
+    import sys
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    valid_tasks = {"easy", "medium", "hard", "crisis"}
+    if task not in valid_tasks:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"unknown task {task!r}", "valid_tasks": sorted(valid_tasks)},
+        )
+    try:
+        from demo.run_demo import run_comparison_metrics
+    except ImportError as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+    payload = run_comparison_metrics(seed=seed, task=task)
+    return JSONResponse(content=payload)
+
+
+# ---------------------------------------------------------------------------
 # /grader
 # ---------------------------------------------------------------------------
 

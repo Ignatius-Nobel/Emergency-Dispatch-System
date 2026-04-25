@@ -9,8 +9,14 @@ Data models for the Emergency Response Dispatch System.
 """
 
 from typing import Optional
+
 from openenv.core.env_server.types import Action, Observation
 from pydantic import Field, model_validator
+
+
+def _stable_bucket(s: str, modulo: int) -> int:
+    """Deterministic integer from string (not Python's salted hash())."""
+    return sum(ord(c) for c in s) % modulo
 
 
 class DispatchGridAction(Action):
@@ -104,6 +110,8 @@ class EmergencyCall(object):
         coordination_tier: str = "none",  # "none" | "mutual_aid" | "mci_protocol"
         correct_hospital: str = "nearest",  # "nearest" | "regional"
         correct_staging: str = "dispatch",  # "dispatch" | "stage_nearby" | "on_scene_hold"
+        zone: Optional[str] = None,
+        patients: Optional[int] = None,
     ):
         self.call_id = call_id
         self.incident_type = incident_type
@@ -117,6 +125,13 @@ class EmergencyCall(object):
         self.coordination_tier = coordination_tier
         self.correct_hospital = correct_hospital
         self.correct_staging = correct_staging
+        zones = ("A", "B", "C")
+        self.zone = zone if zone is not None else zones[_stable_bucket(call_id, 3)]
+        self.patients = (
+            patients
+            if patients is not None
+            else 1 + _stable_bucket(call_id + "|patients", 5)
+        )
 
 
 class DispatchGridObservation(Observation):
@@ -171,3 +186,14 @@ class DispatchGridObservation(Observation):
     ambulances_returning_in: int = Field(default=0, description="Calls until ambulances return")
     police_returning_in: int = Field(default=0, description="Calls until police return")
     fire_returning_in: int = Field(default=0, description="Calls until fire units return")
+
+    # MVE lean dynamics (optional; defaults keep legacy clients working)
+    traffic_regime: str = Field(default="normal", description="Fake traffic: light | normal | heavy")
+    last_eta_minutes: float = Field(default=0.0, description="Scene-to-hospital ETA for last step")
+    last_diverted: bool = Field(default=False, description="Whether patient was diverted to other hospital")
+    last_harm: float = Field(default=0.0, description="Outcome harm proxy (0-1) for last step")
+    last_overflow_penalty: float = Field(
+        default=0.0, description="Penalty when hospital lacked capacity (diversion)"
+    )
+    current_zone: str = Field(default="", description="Incident zone A/B/C for current call")
+    patients: int = Field(default=1, description="Patient count proxy for current call")

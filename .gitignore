@@ -173,9 +173,10 @@ cython_debug/
 
 # Local results / outputs
 
-# Local hackathon command/task docs
-.claude/commands/
-FIXES.md
-MASTER_PROMPT.md
-tasks/
+tasks
+.claude/commands
+
+# Demo script outputs (regenerate with `python3 demo/run_demo.py`)
+demo/metrics.json
+demo/comparison.png
 

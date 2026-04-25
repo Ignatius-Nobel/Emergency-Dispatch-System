@@ -87,6 +87,13 @@ class DispatchGridEnv(EnvClient[DispatchGridAction, DispatchGridObservation, Sta
             ambulances_returning_in=obs_data.get("ambulances_returning_in", 0),
             police_returning_in=obs_data.get("police_returning_in", 0),
             fire_returning_in=obs_data.get("fire_returning_in", 0),
+            traffic_regime=obs_data.get("traffic_regime", "normal"),
+            last_eta_minutes=obs_data.get("last_eta_minutes", 0.0),
+            last_diverted=obs_data.get("last_diverted", False),
+            last_harm=obs_data.get("last_harm", 0.0),
+            last_overflow_penalty=obs_data.get("last_overflow_penalty", 0.0),
+            current_zone=obs_data.get("current_zone", ""),
+            patients=obs_data.get("patients", 1),
             done=payload.get("done", False),
             reward=payload.get("reward"),
         )

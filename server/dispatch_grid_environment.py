@@ -392,6 +392,213 @@ HOSPITAL_CONFIGS = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# MVE: zone travel (minutes base), fake traffic, scripted surge call
+# ---------------------------------------------------------------------------
+
+ZONE_DISTANCE_TABLE: dict[str, dict[str, int]] = {
+    "A": {"A": 4, "B": 14},
+    "B": {"A": 9, "B": 9},
+    "C": {"A": 14, "B": 5},
+}
+
+TRAFFIC_REGIME_NAMES: tuple[str, ...] = ("light", "normal", "heavy")
+TRAFFIC_REGIME_WEIGHTS: tuple[float, ...] = (0.2, 0.6, 0.2)
+TRAFFIC_MULTIPLIER: dict[str, float] = {"light": 0.8, "normal": 1.0, "heavy": 1.6}
+DIVERSION_EXTRA_MINUTES: float = 8.0
+
+SURGE_CALL = EmergencyCall(
+    call_id="SURGE001",
+    incident_type="medical",
+    description="Mass casualty: multiple trauma patients; capacity stress test.",
+    location="Downtown grid, Zone C",
+    caller_info="Field medic",
+    severity="critical",
+    correct_dispatch={"ambulance": 3, "police": 1, "fire": 0},
+    correct_priority=4,
+    needs_backup=True,
+    coordination_tier="mci_protocol",
+    correct_hospital="regional",
+    correct_staging="stage_nearby",
+    zone="C",
+    patients=5,
+)
+
+
+def _sample_traffic_regime() -> tuple[str, float]:
+    r = random.random()
+    acc = 0.0
+    for name, w in zip(TRAFFIC_REGIME_NAMES, TRAFFIC_REGIME_WEIGHTS):
+        acc += w
+        if r <= acc:
+            return name, TRAFFIC_MULTIPLIER[name]
+    return "normal", 1.0
+
+
+def _nearest_hospital_label(zone: str) -> str:
+    row = ZONE_DISTANCE_TABLE[zone]
+    return "A" if row["A"] <= row["B"] else "B"
+
+
+def _regional_hospital_label(
+    hospital_a: dict,
+    hospital_b: dict,
+) -> str:
+    score_a = (10 if hospital_a.get("trauma_capable") else 0) + int(hospital_a.get("icu_beds", 0))
+    score_b = (10 if hospital_b.get("trauma_capable") else 0) + int(hospital_b.get("icu_beds", 0))
+    return "A" if score_a >= score_b else "B"
+
+
+def _medical_bed_flags(call: EmergencyCall) -> tuple[bool, bool]:
+    """Returns (needs_icu_beds, needs_general_beds) for capacity logic."""
+    if call.incident_type.lower() != "medical":
+        return False, False
+    if call.severity in ("severe", "critical"):
+        return True, False
+    return False, True
+
+
+def _beds_to_consume(call: EmergencyCall, action: DispatchGridAction) -> int:
+    if call.incident_type.lower() != "medical" or action.ambulance_units <= 0:
+        return 0
+    return min(int(call.patients), int(action.ambulance_units))
+
+
+def _hospital_dict(env: "DispatchGridEnvironment", label: str) -> dict:
+    return env._hospital_a if label == "A" else env._hospital_b
+
+
+def _can_serve_beds(h: dict, need_icu: bool, n: int) -> bool:
+    if n <= 0:
+        return True
+    if need_icu:
+        return int(h.get("icu_beds", 0)) >= n
+    return int(h.get("general_beds", 0)) >= n
+
+
+def _consume_beds(h: dict, need_icu: bool, n: int) -> None:
+    if n <= 0:
+        return
+    if need_icu:
+        h["icu_beds"] = max(0, int(h["icu_beds"]) - n)
+    else:
+        h["general_beds"] = max(0, int(h["general_beds"]) - n)
+
+
+def _resolve_chosen_hospital_label(
+    env: "DispatchGridEnvironment",
+    call: EmergencyCall,
+    action: DispatchGridAction,
+) -> str:
+    zone = call.zone if call.zone in ZONE_DISTANCE_TABLE else "A"
+    choice = action.hospital_choice
+    if choice == "nearest":
+        return _nearest_hospital_label(zone)
+    if choice == "regional":
+        return _regional_hospital_label(env._hospital_a, env._hospital_b)
+    # auto: prefer hospital that can admit (if medical transport) else nearest by zone
+    need_icu, need_gen = _medical_bed_flags(call)
+    n = _beds_to_consume(call, action)
+    if n <= 0 or (not need_icu and not need_gen):
+        return _nearest_hospital_label(zone)
+    need_icu_b = need_icu
+    candidates: list[tuple[str, float]] = []
+    for lab in ("A", "B"):
+        h = _hospital_dict(env, lab)
+        if _can_serve_beds(h, need_icu_b, n):
+            candidates.append((lab, float(ZONE_DISTANCE_TABLE[zone][lab])))
+    if candidates:
+        return min(candidates, key=lambda x: x[1])[0]
+    return _nearest_hospital_label(zone)
+
+
+def _place_patient_beds(
+    env: "DispatchGridEnvironment",
+    tentative: str,
+    need_icu: bool,
+    need_gen: bool,
+    n: int,
+) -> tuple[str, bool, float]:
+    """Returns (final_label, diverted, overflow_penalty); mutates hospital dicts on success."""
+    if n <= 0 or (not need_icu and not need_gen):
+        return tentative, False, 0.0
+    need_icu_b = need_icu
+    primary = tentative
+    other = "B" if primary == "A" else "A"
+    h_primary = _hospital_dict(env, primary)
+    if _can_serve_beds(h_primary, need_icu_b, n):
+        _consume_beds(h_primary, need_icu_b, n)
+        return primary, False, 0.0
+    h_other = _hospital_dict(env, other)
+    if _can_serve_beds(h_other, need_icu_b, n):
+        _consume_beds(h_other, need_icu_b, n)
+        return other, True, 0.1
+    return primary, True, 0.1
+
+
+def compute_outcome_reward(
+    action: DispatchGridAction,
+    call: EmergencyCall,
+    harm: float,
+    overflow_penalty: float,
+) -> tuple[float, str]:
+    """Outcome-based reward (MVE). Rubric answer key is not used here."""
+    correct = call.correct_dispatch
+    excess = 0
+    for unit in ("ambulance", "police", "fire"):
+        needed = int(correct.get(unit, 0))
+        sent = int(getattr(action, f"{unit}_units"))
+        excess += max(0, sent - needed)
+    base = 0.05
+    reward = base - float(harm) - float(overflow_penalty) - 0.02 * float(excess)
+    reward = round(max(-1.0, min(1.0, reward)), 4)
+    feedback = (
+        f"outcome harm={harm:.3f} overflow={overflow_penalty:.3f} "
+        f"excess_units={excess} reward={reward:+.3f}"
+    )
+    return reward, feedback
+
+
+def compute_harm(
+    call: EmergencyCall,
+    action: DispatchGridAction,
+    eta_minutes: float,
+    diverted: bool,
+) -> float:
+    """Scalar harm proxy in [0, 1]."""
+    thr = {"critical": 6.0, "severe": 10.0, "moderate": 15.0, "minor": 20.0}.get(call.severity, 12.0)
+    eta_factor = max(0.0, min(1.0, (float(eta_minutes) - thr) / 12.0))
+    patients = max(1, int(call.patients))
+    it = call.incident_type.lower()
+    harm = 0.0
+
+    if it == "medical":
+        harm = eta_factor * (0.45 + 0.08 * min(patients, 5))
+    elif it == "fire":
+        need_f = int(call.correct_dispatch.get("fire", 1))
+        sent_f = int(action.fire_units)
+        shortfall = max(0, need_f - sent_f) / max(need_f, 1)
+        harm = 0.55 * shortfall + 0.45 * eta_factor
+    elif it == "crime":
+        need_p = int(call.correct_dispatch.get("police", 1))
+        sent_p = int(action.police_units)
+        shortfall = max(0, need_p - sent_p) / max(need_p, 1)
+        harm = 0.55 * shortfall + 0.45 * eta_factor
+    else:
+        # accident / multi-hazard / default
+        need_a = int(call.correct_dispatch.get("ambulance", 0))
+        need_p = int(call.correct_dispatch.get("police", 0))
+        need_f = int(call.correct_dispatch.get("fire", 0))
+        da = max(0, need_a - int(action.ambulance_units)) / max(need_a, 1) if need_a else 0.0
+        dp = max(0, need_p - int(action.police_units)) / max(need_p, 1) if need_p else 0.0
+        df = max(0, need_f - int(action.fire_units)) / max(need_f, 1) if need_f else 0.0
+        mix = (da + dp + df) / max(1, sum(1 for x in (need_a, need_p, need_f) if x > 0))
+        harm = 0.5 * mix + 0.5 * eta_factor
+
+    if diverted:
+        harm = min(1.0, harm + 0.06)
+    return round(max(0.0, min(1.0, harm)), 4)
+
 
 # ---------------------------------------------------------------------------
 # Reward computation
@@ -594,12 +801,23 @@ class DispatchGridEnvironment(Environment):
         self._police_returning_in = 0
         self._fire_returning_in = 0
         self._mci_protocol_active = False
+        self._reward_mode: str = "rubric"
+        self._last_traffic_regime: str = "normal"
+        self._last_eta_minutes: float = 0.0
+        self._last_diverted: bool = False
+        self._last_harm: float = 0.0
+        self._last_overflow_penalty: float = 0.0
+        self._last_current_zone: str = ""
+        self._last_patients: int = 1
 
     def reset(self, seed=None, episode_id=None, **kwargs) -> DispatchGridObservation:
         # Allow switching task/difficulty on reset
         difficulty = kwargs.get("difficulty") or kwargs.get("task")
         if difficulty and difficulty in TASK_CALL_MAP:
             self._task = difficulty
+
+        if "reward_mode" in kwargs:
+            self._reward_mode = str(kwargs["reward_mode"])
 
         if seed is not None:
             random.seed(seed)
@@ -628,7 +846,21 @@ class DispatchGridEnvironment(Environment):
         pool = TASK_CALL_MAP[self._task].copy()
         random.shuffle(pool)
         self._calls = pool[:4]
+        if self._task in ("hard", "crisis"):
+            self._calls = self._calls[:2] + [SURGE_CALL] + self._calls[2:]
         self._call_index = 0
+
+        self._last_traffic_regime = "normal"
+        self._last_eta_minutes = 0.0
+        self._last_diverted = False
+        self._last_harm = 0.0
+        self._last_overflow_penalty = 0.0
+        if self._calls:
+            self._last_current_zone = str(self._calls[0].zone)
+            self._last_patients = int(self._calls[0].patients)
+        else:
+            self._last_current_zone = ""
+            self._last_patients = 1
 
         return self._make_observation(0.0, "Episode started. First emergency call incoming.")
 
@@ -661,6 +893,15 @@ class DispatchGridEnvironment(Environment):
         if action.ambulance_staging not in _VALID_STAGING:
             _errors.append(f"invalid ambulance_staging: {action.ambulance_staging!r}")
         if _errors:
+            self._last_traffic_regime = "normal"
+            self._last_eta_minutes = 0.0
+            self._last_diverted = False
+            self._last_harm = 0.0
+            self._last_overflow_penalty = 0.0
+            if self._calls and self._call_index < len(self._calls):
+                _c = self._calls[self._call_index]
+                self._last_current_zone = str(_c.zone)
+                self._last_patients = int(_c.patients)
             return self._make_observation(
                 -0.2,
                 "Invalid action — " + "; ".join(_errors),
@@ -668,7 +909,36 @@ class DispatchGridEnvironment(Environment):
             )
 
         current_call = self._calls[self._call_index]
-        reward, feedback = compute_reward(action, current_call)
+        traffic_name, traffic_mult = _sample_traffic_regime()
+        self._last_traffic_regime = traffic_name
+        self._last_current_zone = str(current_call.zone)
+        self._last_patients = int(current_call.patients)
+
+        zone = current_call.zone if current_call.zone in ZONE_DISTANCE_TABLE else "A"
+        tentative = _resolve_chosen_hospital_label(self, current_call, action)
+        need_icu, need_gen = _medical_bed_flags(current_call)
+        n_beds = _beds_to_consume(current_call, action)
+        final_label, diverted, overflow_penalty = _place_patient_beds(
+            self, tentative, need_icu, need_gen, n_beds
+        )
+        base_minutes = float(ZONE_DISTANCE_TABLE[zone][final_label])
+        eta = base_minutes * traffic_mult + (DIVERSION_EXTRA_MINUTES if diverted else 0.0)
+        eta = max(0.5, eta + random.uniform(-0.3, 0.3))
+        self._last_eta_minutes = round(eta, 2)
+        self._last_diverted = diverted
+        self._last_overflow_penalty = overflow_penalty
+
+        harm = compute_harm(current_call, action, eta, diverted)
+        self._last_harm = harm
+
+        if self._reward_mode == "outcome":
+            reward, feedback = compute_outcome_reward(action, current_call, harm, overflow_penalty)
+        else:
+            reward, feedback = compute_reward(action, current_call)
+        feedback += (
+            f" | dynamics traffic={traffic_name} eta_min={self._last_eta_minutes} "
+            f"hospital={final_label} diverted={diverted}"
+        )
         self._cumulative_score += reward
 
         # Process coordination level
@@ -791,6 +1061,13 @@ class DispatchGridEnvironment(Environment):
                 ambulances_returning_in=self._ambulances_returning_in,
                 police_returning_in=self._police_returning_in,
                 fire_returning_in=self._fire_returning_in,
+                traffic_regime=self._last_traffic_regime,
+                last_eta_minutes=self._last_eta_minutes,
+                last_diverted=self._last_diverted,
+                last_harm=self._last_harm,
+                last_overflow_penalty=self._last_overflow_penalty,
+                current_zone=self._last_current_zone,
+                patients=self._last_patients,
                 done=True, reward=round(last_reward, 4),
             )
 
@@ -831,6 +1108,13 @@ class DispatchGridEnvironment(Environment):
             ambulances_returning_in=self._ambulances_returning_in,
             police_returning_in=self._police_returning_in,
             fire_returning_in=self._fire_returning_in,
+            traffic_regime=self._last_traffic_regime,
+            last_eta_minutes=self._last_eta_minutes,
+            last_diverted=self._last_diverted,
+            last_harm=self._last_harm,
+            last_overflow_penalty=self._last_overflow_penalty,
+            current_zone=self._last_current_zone,
+            patients=int(current_call.patients),
             done=False, reward=round(last_reward, 4),
         )
 
