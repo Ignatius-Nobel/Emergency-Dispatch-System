@@ -109,6 +109,20 @@ def test_step_limit_terminates_episode():
     assert obs is not None and obs.done, "Episode did not terminate at step limit"
 
 
+def test_step_after_done_is_safe():
+    """Calling step() after obs.done should not raise and should stay terminal."""
+    env = DispatchGridEnvironment(task="easy")
+    env.reset()
+    obs = None
+    while True:
+        obs = env.step(make_action())
+        if obs.done:
+            break
+    obs2 = env.step(make_action())
+    assert obs2.done
+    assert obs2.call_id == "DONE"
+
+
 # ── FIX-4: over-dispatch reward curve ────────────────────────────────────────
 
 def test_over_dispatch_reward_decreases_with_excess():

@@ -865,6 +865,12 @@ class DispatchGridEnvironment(Environment):
         return self._make_observation(0.0, "Episode started. First emergency call incoming.")
 
     def step(self, action: DispatchGridAction) -> DispatchGridObservation:  # type: ignore[override]
+        if self._call_index >= len(self._calls):
+            return self._make_observation(
+                0.0,
+                "Episode already complete. Call reset() to start a new episode.",
+                done=True,
+            )
         if self._state.step_count >= self.MAX_STEPS_PER_EPISODE:
             return self._make_observation(
                 -0.5,
