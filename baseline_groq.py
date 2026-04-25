@@ -179,10 +179,17 @@ def run_local(task: str, client, model: str, verbose=True) -> dict:
 
 
 def run_http(task: str, base_url: str, client, model: str, verbose=True) -> dict:
-    import requests
-    resp = requests.post(f"{base_url}/reset", json={"task": task}, timeout=10)
-    resp.raise_for_status()
-    od = resp.json().get("observation", {})
+    import os
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from openenv_http_session import post_reset, post_step
+
+    _sid, reset_payload = post_reset(
+        base_url.rstrip("/"), json_body={"task": task}, timeout=10
+    )
+    od = reset_payload.get("observation", {})
 
     data, step, done = [], 0, False
     if verbose:
@@ -200,15 +207,21 @@ def run_http(task: str, base_url: str, client, model: str, verbose=True) -> dict
         if verbose:
             print(f"   🤖 ambulance={a['ambulance_units']} police={a['police_units']} fire={a['fire_units']}")
 
-        r = requests.post(f"{base_url}/step", json={
-            "ambulance_units": a["ambulance_units"],
-            "police_units": a["police_units"],
-            "fire_units": a["fire_units"],
-            "priority_level": a["priority_level"],
-            "backup_requested": a["backup_requested"],
-        }, timeout=10)
-        r.raise_for_status()
-        result = r.json()
+        result = post_step(
+            base_url.rstrip("/"),
+            _sid,
+            {
+                "ambulance_units": a["ambulance_units"],
+                "police_units": a["police_units"],
+                "fire_units": a["fire_units"],
+                "priority_level": a["priority_level"],
+                "backup_requested": a.get("backup_requested", False),
+                "hospital_choice": a.get("hospital_choice", "auto"),
+                "coordination_level": a.get("coordination_level", "none"),
+                "ambulance_staging": a.get("ambulance_staging", "dispatch"),
+            },
+            timeout=10,
+        )
         od = result.get("observation", {})
         done = result.get("done", False)
         reward = result.get("reward", 0.0)

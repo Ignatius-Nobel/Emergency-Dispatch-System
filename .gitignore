@@ -173,3 +173,10 @@ cython_debug/
 
 # Local results / outputs
 
+tasks
+.claude/commands
+
+# Demo script outputs (regenerate with `python3 demo/run_demo.py`)
+demo/metrics.json
+demo/comparison.png
+

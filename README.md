@@ -67,6 +67,24 @@ Before using the environment, you need to build the Docker image:
 docker build -t dispatch_grid-env:latest -f server/Dockerfile .
 ```
 
+## Demo (MVE — traffic, ETA, hospital beds, outcome reward)
+
+Run a side-by-side comparison of **nearest** vs **capacity-aware** routing under `reward_mode="outcome"` (same seed, same episode). Writes `demo/metrics.json`; writes `demo/comparison.png` if `matplotlib` is installed (`uv sync --extra dev` or `pip install matplotlib`).
+
+```bash
+python3 demo/run_demo.py --seed 0 --task hard
+```
+
+With the HTTP server running, JSON metrics are also available at `GET /demo/compare?seed=0&task=hard`.
+
+**Raw HTTP (`requests`, curl):** `POST /reset` returns a header `X-Session-Id`. Send that header on every `POST /step` and `GET /state` for the same episode. Step body must be `{"action": { ... }}`. Helpers: [`openenv_http_session.py`](openenv_http_session.py). WebSocket clients (e.g. `DispatchGridEnv().sync()`) are unchanged.
+
+**Talking points (2–3 minutes):**
+
+1. Fake traffic regimes (`light` / `normal` / `heavy`) scale travel time; observations expose `traffic_regime` and `last_eta_minutes`.
+2. Medical calls consume **ICU** or **general** beds; lack of capacity triggers **diversion** (+8 minutes) and `last_overflow_penalty`, surfaced in the observation.
+3. Default `reward_mode="rubric"` is unchanged for OpenEnv graders; use `reset(..., reward_mode="outcome")` for the harm-based proxy used in the demo.
+
 ## Action Space
 
 **DispatchGridAction** - Decide how to respond to each emergency call:

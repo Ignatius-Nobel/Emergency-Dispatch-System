@@ -6,8 +6,12 @@
 
 """Dispatch Grid Environment."""
 
-from .client import DispatchGridEnv
-from .models import DispatchGridAction, DispatchGridObservation
+try:
+    from .client import DispatchGridEnv
+    from .models import DispatchGridAction, DispatchGridObservation
+except ImportError:  # pragma: no cover — loose import (e.g. pytest package probe)
+    from client import DispatchGridEnv
+    from models import DispatchGridAction, DispatchGridObservation
 
 __all__ = [
     "DispatchGridAction",
