@@ -17,7 +17,7 @@ from openenv_http_session import post_reset, post_step
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--task",     default="easy",  choices=["easy","medium","hard","crisis"])
+parser.add_argument("--task",     default="easy",  choices=["easy","medium","hard","crisis","mixed"])
 parser.add_argument("--steps",    default=300,     type=int)
 parser.add_argument("--episodes", default=200,     type=int)
 parser.add_argument("--model",    default="unsloth/Qwen2.5-7B-Instruct")
@@ -25,6 +25,15 @@ parser.add_argument("--port",     default=8000,    type=int)
 args = parser.parse_args()
 
 ENV_URL = f"http://127.0.0.1:{args.port}"
+
+TASKS = ["easy", "medium", "hard", "crisis"]
+# Default "realistic-ish" mixture; tweak as desired.
+TASK_WEIGHTS = [0.50, 0.30, 0.15, 0.05]
+
+def sample_task() -> str:
+    if args.task == "mixed":
+        return random.choices(TASKS, weights=TASK_WEIGHTS, k=1)[0]
+    return args.task
 
 # ── Start OpenEnv server ──────────────────────────────────────────────────────
 def start_server():
@@ -89,8 +98,10 @@ staging: <dispatch|stage_nearby|on_scene_hold>
 
 Respond only with those 7 lines. No explanation."""
 
-def obs_to_prompt(obs: dict) -> list[dict]:
+def obs_to_prompt(obs: dict, task: str | None = None) -> list[dict]:
+    task_line = f"TASK: {task}\n" if task else ""
     user_msg = (
+        task_line
         f"INCOMING CALL [{obs.get('call_id','')}]\n"
         f"Type: {obs.get('incident_type','')}\n"
         f"Description: {obs.get('call_description','')}\n"
@@ -124,9 +135,10 @@ def make_dataset(n_episodes: int):
     from datasets import Dataset
     rows = []
     for _ in range(n_episodes):
-        _sid, data = post_reset(ENV_URL, json_body={"task": args.task})
+        task = sample_task()
+        _sid, data = post_reset(ENV_URL, json_body={"task": task})
         obs = data["observation"]
-        rows.append({"prompt": obs_to_prompt(obs)})
+        rows.append({"prompt": obs_to_prompt(obs, task=task)})
     return Dataset.from_list(rows)
 
 print(f"[..] Building dataset ({args.episodes} episodes)...")
@@ -135,12 +147,28 @@ print(f"[OK] Dataset ready: {len(dataset)} rows")
 
 
 # ── Reward function ───────────────────────────────────────────────────────────
+def _extract_task_from_prompt(prompt) -> str:
+    # `prompt` is expected to be a chat list of {"role": ..., "content": ...}.
+    # We stash the tier in the user content as "TASK: <tier>" for mixed runs.
+    try:
+        if isinstance(prompt, list):
+            for m in prompt:
+                if isinstance(m, dict) and m.get("role") == "user":
+                    content = m.get("content", "")
+                    mm = re.search(r"(?mi)^\s*TASK\s*:\s*(easy|medium|hard|crisis)\s*$", content)
+                    if mm:
+                        return mm.group(1).lower()
+    except Exception:
+        pass
+    return args.task if args.task != "mixed" else "easy"
+
 def get_reward(completions, prompts, **kwargs) -> list[float]:
     rewards = []
-    for completion in completions:
+    for i, completion in enumerate(completions):
         text = completion[0]["content"] if isinstance(completion, list) else completion
         try:
-            sid, _ = post_reset(ENV_URL, json_body={"task": args.task})
+            task = _extract_task_from_prompt(prompts[i]) if i < len(prompts) else sample_task()
+            sid, _ = post_reset(ENV_URL, json_body={"task": task})
             action = parse_action(text)
             if "backup_requested" not in action:
                 action["backup_requested"] = False
@@ -171,7 +199,7 @@ def random_action() -> dict:
 def evaluate_random(n=20) -> float:
     scores = []
     for _ in range(n):
-        sid, _ = post_reset(ENV_URL, json_body={"task": args.task})
+        sid, _ = post_reset(ENV_URL, json_body={"task": sample_task()})
         total = 0.0
         for _ in range(10):
             a = random_action()
@@ -244,6 +272,23 @@ if logs:
 else:
     print("[warn] No reward logs found — curve not saved")
 
+# ── Loss curve ────────────────────────────────────────────────────────────────
+loss_logs = [l for l in trainer.state.log_history if "loss" in l]
+if loss_logs:
+    loss_steps = [l["step"] for l in loss_logs]
+    losses = [l["loss"] for l in loss_logs]
+    plt.figure(figsize=(9, 4))
+    plt.plot(loss_steps, losses, linewidth=1.5, color="#c0392b")
+    plt.xlabel("Training step")
+    plt.ylabel("Loss")
+    plt.title(f"Emergency Dispatch RL — loss curve ({args.task})")
+    plt.tight_layout()
+    loss_path = os.path.join(os.path.dirname(__file__), "loss_curve.png")
+    plt.savefig(loss_path, dpi=150)
+    print(f"[OK] Loss curve saved to {loss_path}")
+else:
+    print("[warn] No loss logs found — curve not saved")
+
 
 # ── After-training evaluation ─────────────────────────────────────────────────
 print("[..] Evaluating trained model...")
@@ -263,7 +308,7 @@ def model_action(obs_dict: dict) -> dict:
 def evaluate_model(n=20) -> float:
     scores = []
     for _ in range(n):
-        _sid, data = post_reset(ENV_URL, json_body={"task": args.task})
+        _sid, data = post_reset(ENV_URL, json_body={"task": sample_task()})
         obs = data["observation"]
         total = 0.0
         for _ in range(10):
