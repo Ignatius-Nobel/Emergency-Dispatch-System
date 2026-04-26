@@ -336,4 +336,5 @@ Links outside this repository:
 | **Source (GitHub)** | [https://github.com/Ignatius-Nobel/Emergency-Dispatch-System](https://github.com/Ignatius-Nobel/Emergency-Dispatch-System) |
 | **Training in Colab** | [Open in Colab](https://colab.research.google.com/github/Ignatius-Nobel/Emergency-Dispatch-System/blob/main/training/dispatch_rl_training.ipynb) — `training/dispatch_rl_training.ipynb` |
 | **Written overview (Hugging Face)** | Draft: [`docs/hackathon_blog.md`](docs/hackathon_blog.md) — *after you publish a post, add its public URL here* |
+| **Long-form: RL in emergency dispatch** | [`docs/blog_rl_emergency_dispatch.md`](docs/blog_rl_emergency_dispatch.md) |
 | **Video walkthrough (optional)** | *Add a public YouTube or other link when available* |
