@@ -26,7 +26,6 @@ args = parser.parse_args()
 
 ENV_URL = f"http://127.0.0.1:{args.port}"
 
-
 # ── Start OpenEnv server ──────────────────────────────────────────────────────
 def start_server():
     import uvicorn
@@ -155,7 +154,7 @@ def get_reward(completions, prompts, **kwargs) -> list[float]:
 
 # ── Baseline evaluation (random agent) ───────────────────────────────────────
 def random_action() -> dict:
-    return {
+    a = {
         "ambulance_units":   random.randint(0, 3),
         "police_units":      random.randint(0, 3),
         "fire_units":        random.randint(0, 3),
@@ -164,6 +163,10 @@ def random_action() -> dict:
         "hospital_choice":   "nearest",
         "ambulance_staging": "dispatch",
     }
+    # Server-side action schema requires at least one dispatched unit.
+    if a["ambulance_units"] == 0 and a["police_units"] == 0 and a["fire_units"] == 0:
+        a[random.choice(["ambulance_units", "police_units", "fire_units"])] = 1
+    return a
 
 def evaluate_random(n=20) -> float:
     scores = []
