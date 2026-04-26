@@ -195,7 +195,7 @@ from trl import GRPOTrainer, GRPOConfig
 
 model, tokenizer = FastLanguageModel.from_pretrained(
     args.model, max_seq_length=1024, load_in_4bit=True)
-FastLanguageModel.get_peft_model(
+model = FastLanguageModel.get_peft_model(
     model, r=16, target_modules=["q_proj", "v_proj"],
     lora_alpha=16, lora_dropout=0.0, bias="none")
 
