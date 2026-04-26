@@ -174,7 +174,33 @@ cython_debug/
 # Mac OS
 .DS_Store
 
-# Local results / outputs
+# Local results / outputs (align with .gitignore)
+tasks
+.claude/
+.claude/commands
+demo/metrics.json
+demo/comparison.png
+
+# IDE / local tool metadata
+.cursor/
+*.code-workspace
+
+# Training & experiment artifacts (large; regenerate with training/train_dispatch.py)
+training/checkpoints/
+training/reward_curve.png
+training/loss_curve.png
+training/comparison.json
+wandb/
+runs/
+lightning_logs/
+mlruns/
+
+# Baseline / inference outputs
+baseline_results.json
+results.json
+
+# Hugging Face CLI cache (if present in tree)
+.huggingface/
 
 # Git
 .git
