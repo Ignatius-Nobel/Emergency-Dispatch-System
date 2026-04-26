@@ -1,3 +1,16 @@
+---
+title: Emergency Response Dispatch System
+emoji: 🚨
+colorFrom: red
+colorTo: blue
+sdk: docker
+pinned: false
+app_port: 8000
+base_path: /web
+tags:
+  - openenv
+---
+
 # Emergency Response Dispatch System
 
 ## Introduction
@@ -30,11 +43,10 @@ After a full run, the training script writes **artifacts** under `training/`:
 
 Generate them with `python training/train_dispatch.py` (or the Colab notebook). Plots are shown here when the files exist in the repo:
 
-![Reward curve](training/reward_curve.png)
+![Reward curve](docs/reward_curve.png)
 
-![Loss curve](training/loss_curve.png)
+![Loss curve](docs/loss_curve.png)
 
-*If the images do not load, the PNGs are not in your tree yet—run training to create them.*
 
 ## Quick Start
 
@@ -334,7 +346,5 @@ Links outside this repository:
 | **Live app (Hugging Face Space)** | [https://ignatius-nobel-Emergency-Dispatch-System.hf.space](https://ignatius-nobel-Emergency-Dispatch-System.hf.space) |
 | **Hugging Face Space (project page)** | [https://huggingface.co/spaces/ignatius-nobel/Emergency-Dispatch-System](https://huggingface.co/spaces/ignatius-nobel/Emergency-Dispatch-System) |
 | **Source (GitHub)** | [https://github.com/Ignatius-Nobel/Emergency-Dispatch-System](https://github.com/Ignatius-Nobel/Emergency-Dispatch-System) |
-| **Training in Colab** | [Open in Colab](https://colab.research.google.com/github/Ignatius-Nobel/Emergency-Dispatch-System/blob/main/training/dispatch_rl_training.ipynb) — `training/dispatch_rl_training.ipynb` |
-| **Written overview (Hugging Face)** | Draft: [`docs/hackathon_blog.md`](docs/hackathon_blog.md) — *after you publish a post, add its public URL here* |
-| **Long-form: RL in emergency dispatch** | [`docs/blog_rl_emergency_dispatch.md`](docs/blog_rl_emergency_dispatch.md) |
-| **Video walkthrough (optional)** | *Add a public YouTube or other link when available* |
+| **Training in Colab** | [Open in Colab](https://colab.research.google.com/drive/1au-2O8rmgxfydc26jPuRALrvVrsI35qk?usp=sharing)
+| **Blog** | [View Blog](https://github.com/Ignatius-Nobel/Emergency-Dispatch-System/blob/main/BLOG.md)
