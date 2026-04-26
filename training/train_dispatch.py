@@ -69,7 +69,7 @@ def parse_action(text: str) -> dict:
         val = m.group(1).strip().lower() if m else default
         return val if val in choices else default
 
-    return {
+    action = {
         "ambulance_units":   find_int(r"ambulance[s]?\s*[:\-]\s*(\d+)", 0),
         "police_units":      find_int(r"police\s*[:\-]\s*(\d+)", 0),
         "fire_units":        find_int(r"fire\s*[:\-]\s*(\d+)", 0),
@@ -84,6 +84,10 @@ def parse_action(text: str) -> dict:
             r"staging\s*[:\-]\s*(\w+)",
             {"dispatch", "stage_nearby", "on_scene_hold"}, "dispatch"),
     }
+    # Server-side action schema requires at least one dispatched unit.
+    if action["ambulance_units"] == 0 and action["police_units"] == 0 and action["fire_units"] == 0:
+        action["ambulance_units"] = 1
+    return action
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
@@ -101,7 +105,7 @@ Respond only with those 7 lines. No explanation."""
 def obs_to_prompt(obs: dict, task: str | None = None) -> list[dict]:
     task_line = f"TASK: {task}\n" if task else ""
     user_msg = (
-        task_line
+        task_line +
         f"INCOMING CALL [{obs.get('call_id','')}]\n"
         f"Type: {obs.get('incident_type','')}\n"
         f"Description: {obs.get('call_description','')}\n"
